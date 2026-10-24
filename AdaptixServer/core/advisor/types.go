@@ -60,3 +60,24 @@ type SyncPacketAdvisor struct {
 	Alternatives []string `json:"adv_alternatives"`
 	Date         int64    `json:"adv_date"`
 }
+
+type SyncPacketAdvisorStatus struct {
+	SpType  int    `json:"type"`
+	AgentID string `json:"adv_agent_id"`
+	Status  string `json:"adv_status"`
+	Message string `json:"adv_message"`
+	Date    int64  `json:"adv_date"`
+}
+
+type SyncPacketAdvisorChat struct {
+	SpType   int    `json:"type"`
+	AgentID  string `json:"adv_agent_id"`
+	Query    string `json:"adv_query"`
+	Response string `json:"adv_response"`
+	Date     int64  `json:"adv_date"`
+}
+
+type ChatRequest struct {
+	AgentID string `json:"agent_id"`
+	Message string `json:"message"`
+}

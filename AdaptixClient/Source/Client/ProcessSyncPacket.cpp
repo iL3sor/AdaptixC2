@@ -512,6 +512,18 @@ bool AdaptixWidget::isValidSyncPacket(QJsonObject jsonObj)
                checkField("adv_category", isStr) &&
                checkField("adv_date", isNum);
 
+    case TYPE_ADVISOR_STATUS:
+        return checkField("adv_agent_id", isStr) &&
+               checkField("adv_status", isStr) &&
+               checkField("adv_message", isStr) &&
+               checkField("adv_date", isNum);
+
+    case TYPE_ADVISOR_CHAT_RESPONSE:
+        return checkField("adv_agent_id", isStr) &&
+               checkField("adv_query", isStr) &&
+               checkField("adv_response", isStr) &&
+               checkField("adv_date", isNum);
+
     default:
         qWarning() << "[SyncPacket] Unknown packet type:" << spType;
         return false;
@@ -1087,6 +1099,24 @@ void AdaptixWidget::processSyncPacket(QJsonObject jsonObj)
         );
         break;
     }
+
+    case TYPE_ADVISOR_STATUS:
+        AdvisorDock->AddStatus(
+            jsonObj["adv_date"].toDouble(),
+            jsonObj["adv_agent_id"].toString(),
+            jsonObj["adv_status"].toString(),
+            jsonObj["adv_message"].toString()
+        );
+        break;
+
+    case TYPE_ADVISOR_CHAT_RESPONSE:
+        AdvisorDock->AddChatResponse(
+            jsonObj["adv_date"].toDouble(),
+            jsonObj["adv_agent_id"].toString(),
+            jsonObj["adv_query"].toString(),
+            jsonObj["adv_response"].toString()
+        );
+        break;
 
     case SP_TYPE_EVENT:
         LogsDock->AddLogs( jsonObj["event_type"].toDouble(), jsonObj["date"].toDouble(), jsonObj["message"].toString() );

@@ -307,13 +307,13 @@ func TestAdvisor_HandleTaskComplete(t *testing.T) {
 	}
 
 	packets := ts.getPackets()
-	if len(packets) != 1 {
-		t.Fatalf("expected 1 sync packet, got %d", len(packets))
+	if len(packets) != 2 {
+		t.Fatalf("expected 2 packets (status + recommendation), got %d", len(packets))
 	}
 
-	pkt, ok := packets[0].(SyncPacketAdvisor)
+	pkt, ok := packets[1].(SyncPacketAdvisor)
 	if !ok {
-		t.Fatalf("packet type = %T, want SyncPacketAdvisor", packets[0])
+		t.Fatalf("packet type = %T, want SyncPacketAdvisor", packets[1])
 	}
 	if pkt.SpType != TYPE_ADVISOR_RECOMMENDATION {
 		t.Errorf("SpType = 0x%x, want 0x%x", pkt.SpType, TYPE_ADVISOR_RECOMMENDATION)
@@ -364,8 +364,15 @@ func TestAdvisor_LLMError(t *testing.T) {
 	})
 
 	packets := ts.getPackets()
-	if len(packets) != 0 {
-		t.Errorf("expected 0 packets on LLM error, got %d", len(packets))
+	if len(packets) != 2 {
+		t.Fatalf("expected 2 packets (processing + error status), got %d", len(packets))
+	}
+	errPkt, ok := packets[1].(SyncPacketAdvisorStatus)
+	if !ok {
+		t.Fatalf("packet[1] type = %T, want SyncPacketAdvisorStatus", packets[1])
+	}
+	if errPkt.Status != "error" {
+		t.Errorf("status = %q, want %q", errPkt.Status, "error")
 	}
 }
 
@@ -708,10 +715,19 @@ func TestAdvisor_OpsecNoteInPacket(t *testing.T) {
 	})
 
 	packets := ts.getPackets()
-	if len(packets) != 1 {
-		t.Fatalf("expected 1 packet, got %d", len(packets))
+	if len(packets) != 2 {
+		t.Fatalf("expected 2 packets (status + recommendation), got %d", len(packets))
 	}
-	pkt := packets[0].(SyncPacketAdvisor)
+	// First packet is the "processing" status
+	statusPkt, ok := packets[0].(SyncPacketAdvisorStatus)
+	if !ok {
+		t.Fatalf("packet[0] type = %T, want SyncPacketAdvisorStatus", packets[0])
+	}
+	if statusPkt.Status != "processing" {
+		t.Errorf("status = %q, want %q", statusPkt.Status, "processing")
+	}
+	// Second packet is the recommendation
+	pkt := packets[1].(SyncPacketAdvisor)
 	if pkt.OpsecNote != "In-process, no child process" {
 		t.Errorf("opsec_note = %q, want %q", pkt.OpsecNote, "In-process, no child process")
 	}

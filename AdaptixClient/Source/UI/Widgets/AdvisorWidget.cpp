@@ -3,6 +3,7 @@
 #include <Utils/Convert.h>
 #include <UI/Widgets/AdaptixWidget.h>
 #include <Client/AuthProfile.h>
+#include <Client/HttpRequestManager.h>
 
 REGISTER_DOCK_WIDGET(AdvisorWidget, "AI Advisor", true)
 
@@ -15,6 +16,9 @@ AdvisorWidget::AdvisorWidget(AdaptixWidget* w) : DockTab("AI Advisor", w->GetPro
     connect(prevButton,     &ClickableLabel::clicked,  this, &AdvisorWidget::handleSearchBackward);
     connect(hideButton,     &ClickableLabel::clicked,  this, &AdvisorWidget::toggleSearchPanel);
     connect(advisorOutput,  &TextEditConsole::ctx_find, this, &AdvisorWidget::toggleSearchPanel);
+    connect(copyButton,     &QPushButton::clicked,     this, &AdvisorWidget::handleCopyCommand);
+    connect(chatSendButton, &QPushButton::clicked,     this, &AdvisorWidget::handleSendChat);
+    connect(chatInput,      &QLineEdit::returnPressed, this, &AdvisorWidget::handleSendChat);
 
     shortcutSearch = new QShortcut(QKeySequence("Ctrl+F"), advisorOutput);
     shortcutSearch->setContext(Qt::WidgetShortcut);
@@ -69,15 +73,36 @@ void AdvisorWidget::createUI()
     searchLayout->addWidget(hideButton);
     searchLayout->addSpacerItem(spacer);
 
+    copyButton = new QPushButton("Copy Cmd", this);
+    copyButton->setFixedHeight(24);
+    copyButton->setFixedWidth(80);
+    copyButton->setToolTip("Copy last recommended command to clipboard");
+
     advisorOutput = new TextEditConsole(this);
     advisorOutput->setReadOnly(true);
     advisorOutput->setStyleSheet("background-color: #151515; color: #BEBEBE; border: 1px solid #2A2A2A; border-radius: 4px;");
+
+    chatWidget = new QWidget(this);
+    auto* chatLayout = new QHBoxLayout(chatWidget);
+    chatLayout->setContentsMargins(0, 0, 0, 0);
+    chatLayout->setSpacing(4);
+
+    chatInput = new QLineEdit(chatWidget);
+    chatInput->setPlaceholderText("Ask AI advisor...");
+
+    chatSendButton = new QPushButton("Send", chatWidget);
+    chatSendButton->setFixedSize(60, 28);
+
+    chatLayout->addWidget(chatInput);
+    chatLayout->addWidget(chatSendButton);
 
     gridLayout = new QGridLayout(this);
     gridLayout->setContentsMargins(0, 1, 0, 4);
     gridLayout->setVerticalSpacing(4);
     gridLayout->addWidget(searchWidget,  0, 0, 1, 1);
-    gridLayout->addWidget(advisorOutput, 1, 0, 1, 1);
+    gridLayout->addWidget(copyButton,    1, 0, 1, 1, Qt::AlignLeft);
+    gridLayout->addWidget(advisorOutput, 2, 0, 1, 1);
+    gridLayout->addWidget(chatWidget,    3, 0, 1, 1);
 }
 
 void AdvisorWidget::AddRecommendation(const qint64 date, const QString &agentId, const QString &command,
@@ -85,6 +110,9 @@ void AdvisorWidget::AddRecommendation(const qint64 date, const QString &agentId,
                                       const QString &priority, const QString &category,
                                       const QStringList &alternatives, const QString &opsecNote)
 {
+    lastCommand = command;
+    lastAgentId = agentId;
+
     QColor priorityColor(COLOR_ConsoleWhite);
     if (priority == "high")
         priorityColor = QColor(COLOR_ChiliPepper);
@@ -132,6 +160,28 @@ void AdvisorWidget::AddRecommendation(const qint64 date, const QString &agentId,
         advisorOutput->appendPlain("\n");
     }
 
+    advisorOutput->appendPlain("\n");
+}
+
+void AdvisorWidget::AddStatus(const qint64 date, const QString &agentId, const QString &status, const QString &message)
+{
+    lastAgentId = agentId;
+
+    advisorOutput->appendColor(UnixTimestampGlobalToStringLocal(date), QColor(COLOR_Gray));
+    advisorOutput->appendPlain(" ");
+
+    if (status == "processing") {
+        advisorOutput->appendColorBold("[ANALYZING]", QColor(COLOR_BabyBlue));
+    } else if (status == "error") {
+        advisorOutput->appendColorBold("[ERROR]", QColor(COLOR_ChiliPepper));
+    } else {
+        advisorOutput->appendColorBold("[" + status.toUpper() + "]", QColor(COLOR_Gray));
+    }
+
+    advisorOutput->appendPlain(" agent:");
+    advisorOutput->appendColor(agentId.left(8), QColor(COLOR_NeonGreen));
+    advisorOutput->appendPlain(" ");
+    advisorOutput->appendColor(message, QColor(COLOR_ConsoleWhite));
     advisorOutput->appendPlain("\n");
 }
 
@@ -241,4 +291,63 @@ void AdvisorWidget::handleSearchBackward()
     }
 
     highlightCurrent();
+}
+
+void AdvisorWidget::handleCopyCommand()
+{
+    if (lastCommand.isEmpty())
+        return;
+    QApplication::clipboard()->setText(lastCommand);
+}
+
+void AdvisorWidget::handleSendChat()
+{
+    QString text = chatInput->text().trimmed();
+    if (text.isEmpty())
+        return;
+
+    if (lastAgentId.isEmpty())
+        return;
+
+    qint64 now = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+    advisorOutput->appendColor(UnixTimestampGlobalToStringLocal(now), QColor(COLOR_Gray));
+    advisorOutput->appendPlain(" ");
+    advisorOutput->appendColorBold("[YOU]", QColor(COLOR_PastelYellow));
+    advisorOutput->appendPlain(" agent:");
+    advisorOutput->appendColor(lastAgentId.left(8), QColor(COLOR_NeonGreen));
+    advisorOutput->appendPlain(" ");
+    advisorOutput->appendColor(text, QColor(COLOR_ConsoleWhite));
+    advisorOutput->appendPlain("\n");
+
+    QJsonObject jsonObj;
+    jsonObj["agent_id"] = lastAgentId;
+    jsonObj["message"]  = text;
+    QByteArray jsonData = QJsonDocument(jsonObj).toJson(QJsonDocument::Compact);
+
+    AuthProfile* profile = adaptixWidget->GetProfile();
+    HttpRequestManager::instance().postFireAndForget(profile->GetURL(), "/advisor/chat", profile->GetAccessToken(), jsonData);
+
+    chatInput->clear();
+}
+
+void AdvisorWidget::AddChatResponse(const qint64 date, const QString &agentId, const QString &query, const QString &response)
+{
+    lastAgentId = agentId;
+
+    advisorOutput->appendColor(UnixTimestampGlobalToStringLocal(date), QColor(COLOR_Gray));
+    advisorOutput->appendPlain(" ");
+    advisorOutput->appendColorBold("[AI]", QColor(COLOR_BabyBlue));
+    advisorOutput->appendPlain(" agent:");
+    advisorOutput->appendColor(agentId.left(8), QColor(COLOR_NeonGreen));
+    advisorOutput->appendPlain("\n");
+
+    advisorOutput->appendPlain("  ");
+    advisorOutput->appendColor("Q: ", QColor(COLOR_Gray));
+    advisorOutput->appendColor(query, QColor(COLOR_PastelYellow));
+    advisorOutput->appendPlain("\n");
+
+    advisorOutput->appendPlain("  ");
+    advisorOutput->appendColor("A: ", QColor(COLOR_Gray));
+    advisorOutput->appendColor(response, QColor(COLOR_ConsoleWhite));
+    advisorOutput->appendPlain("\n\n");
 }

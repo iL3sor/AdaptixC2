@@ -23,7 +23,7 @@ Teamserver:
   refresh_token_live_hours: 168
 
 Advisor:
-  enabled: false
+  enabled: true
   provider: "claude"
   api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-opus-4-6"

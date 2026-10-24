@@ -15,7 +15,11 @@ import (
 	"github.com/Adaptix-Framework/axc2"
 )
 
-const TYPE_ADVISOR_RECOMMENDATION = 0xA1
+const (
+	TYPE_ADVISOR_RECOMMENDATION  = 0xA1
+	TYPE_ADVISOR_STATUS          = 0xA2
+	TYPE_ADVISOR_CHAT_RESPONSE   = 0xA3
+)
 
 type TeamserverInterface interface {
 	GetAgent(agentId string) (adaptix.AgentData, bool)
@@ -156,6 +160,16 @@ func (a *Advisor) buildMultiAgentSummary(excludeId string) string {
 	return sb.String()
 }
 
+func (a *Advisor) sendStatus(agentId, status, message string) {
+	a.ts.SyncAdvisor(SyncPacketAdvisorStatus{
+		SpType:  TYPE_ADVISOR_STATUS,
+		AgentID: agentId,
+		Status:  status,
+		Message: message,
+		Date:    time.Now().UTC().Unix(),
+	})
+}
+
 func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 	state := a.getOrCreateState(agentId)
 
@@ -184,6 +198,8 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 		return
 	}
 
+	a.sendStatus(agentId, "processing", fmt.Sprintf("Analyzing output of: %s", task.CommandLine))
+
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -203,12 +219,25 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 
 	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") {
+			a.sendStatus(agentId, "error", "Rate limited — too many requests, will retry on next task")
+		} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "403") {
+			a.sendStatus(agentId, "error", "Authentication failed — check ANTHROPIC_API_KEY")
+		} else if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+			a.sendStatus(agentId, "error", "Request timed out (90s) — model may be overloaded")
+		} else if strings.Contains(errMsg, "credit") || strings.Contains(errMsg, "billing") || strings.Contains(errMsg, "insufficient") {
+			a.sendStatus(agentId, "error", "API credits exhausted — check billing at console.anthropic.com")
+		} else {
+			a.sendStatus(agentId, "error", fmt.Sprintf("LLM error: %s", errMsg))
+		}
 		logs.Warn("", "AI Advisor: LLM error for agent %s: %v", agentId, err)
 		return
 	}
 
 	rec, err := parseRecommendation(response)
 	if err != nil {
+		a.sendStatus(agentId, "error", fmt.Sprintf("Failed to parse AI response: %s", err.Error()))
 		logs.Warn("", "AI Advisor: parse error for agent %s: %v", agentId, err)
 		return
 	}
@@ -229,6 +258,57 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 
 	a.ts.SyncAdvisor(packet)
 	logs.Info("", "AI Advisor: recommendation for %s: [%s] %s", agentId, rec.Category, rec.Command)
+}
+
+func (a *Advisor) HandleChat(agentId string, message string) {
+	state := a.getOrCreateState(agentId)
+
+	a.sendStatus(agentId, "processing", "Thinking about your question...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	agentCtx := state.GetContext()
+	history := state.GetHistory()
+
+	reconSummary := state.Recon.Summary()
+	discoverySummary := state.Recon.DiscoverySummary()
+	if discoverySummary != "" {
+		reconSummary += "\n  Discoveries:\n" + discoverySummary
+	}
+
+	otherAgents := a.buildMultiAgentSummary(agentId)
+
+	systemPrompt := BuildSystemPrompt(a.config.Scope)
+	userPrompt := BuildChatPrompt(agentCtx, history, reconSummary, otherAgents, message)
+
+	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") {
+			a.sendStatus(agentId, "error", "Rate limited — too many requests, try again later")
+		} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "403") {
+			a.sendStatus(agentId, "error", "Authentication failed — check ANTHROPIC_API_KEY")
+		} else if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+			a.sendStatus(agentId, "error", "Request timed out (90s) — model may be overloaded")
+		} else if strings.Contains(errMsg, "credit") || strings.Contains(errMsg, "billing") || strings.Contains(errMsg, "insufficient") {
+			a.sendStatus(agentId, "error", "API credits exhausted — check billing at console.anthropic.com")
+		} else {
+			a.sendStatus(agentId, "error", fmt.Sprintf("LLM error: %s", errMsg))
+		}
+		logs.Warn("", "AI Advisor: chat error for agent %s: %v", agentId, err)
+		return
+	}
+
+	a.ts.SyncAdvisor(SyncPacketAdvisorChat{
+		SpType:   TYPE_ADVISOR_CHAT_RESPONSE,
+		AgentID:  agentId,
+		Query:    message,
+		Response: strings.TrimSpace(response),
+		Date:     time.Now().UTC().Unix(),
+	})
+
+	logs.Info("", "AI Advisor: chat response for %s: %.100s", agentId, response)
 }
 
 func parseRecommendation(response string) (*Recommendation, error) {

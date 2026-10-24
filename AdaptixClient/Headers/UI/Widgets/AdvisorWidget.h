@@ -23,6 +23,14 @@ class AdvisorWidget : public DockTab
     QSpacerItem*    spacer         = nullptr;
     QShortcut*      shortcutSearch = nullptr;
 
+    QPushButton*    copyButton     = nullptr;
+    QLineEdit*      chatInput      = nullptr;
+    QPushButton*    chatSendButton = nullptr;
+    QWidget*        chatWidget     = nullptr;
+
+    QString lastCommand;
+    QString lastAgentId;
+
     int  currentIndex = -1;
     QVector<QTextEdit::ExtraSelection> allSelections;
 
@@ -40,12 +48,16 @@ public:
                            const QString &rationale, const QString &lookFor,
                            const QString &priority, const QString &category,
                            const QStringList &alternatives, const QString &opsecNote);
+    void AddStatus(qint64 date, const QString &agentId, const QString &status, const QString &message);
+    void AddChatResponse(qint64 date, const QString &agentId, const QString &query, const QString &response);
     void Clear() const;
 
 public Q_SLOTS:
     void toggleSearchPanel();
     void handleSearch();
     void handleSearchBackward();
+    void handleCopyCommand();
+    void handleSendChat();
 };
 
 #endif //ADAPTIXCLIENT_ADVISORWIDGET_H
