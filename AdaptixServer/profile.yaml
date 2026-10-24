@@ -32,6 +32,7 @@ Advisor:
   max_history: 10
   redact_creds: true
   max_output_len: 4000
+  bof_path: "/home/kali/AdaptixC2/CS-Situational-Awareness-BOF/SA/"
 
 HttpServer:
   error:

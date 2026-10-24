@@ -16,6 +16,7 @@ type TsAdvisorConfig struct {
 	MaxHistory   int    `yaml:"max_history"`
 	RedactCreds  bool   `yaml:"redact_creds"`
 	MaxOutputLen int    `yaml:"max_output_len"`
+	BofPath      string `yaml:"bof_path"`
 }
 
 type TsProfile struct {
