@@ -159,6 +159,25 @@ func TestParseRecommendation_DefaultCategory(t *testing.T) {
 	}
 }
 
+func TestParseRecommendation_MultipleJSONBlocks(t *testing.T) {
+	input := "```json\n{\"command\":\"driversigs\",\"rationale\":\"check drivers\"}\n```\n\nSome extra text with `code`\n\n```json\n{\"command\":\"ipconfig\",\"rationale\":\"network\"}\n```"
+	rec, err := parseRecommendation(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Command != "driversigs" {
+		t.Errorf("command = %q, want first JSON block command", rec.Command)
+	}
+}
+
+func TestExtractJSON_BalancedBraces(t *testing.T) {
+	input := `Here is the result: {"command":"test","nested":{"a":"b"}} and more text`
+	got := extractJSON(input)
+	if got != `{"command":"test","nested":{"a":"b"}}` {
+		t.Errorf("extractJSON = %q, want balanced JSON object", got)
+	}
+}
+
 func TestBuildSystemPrompt_WithScope(t *testing.T) {
 	prompt := BuildSystemPrompt("10.0.0.0/8, CORP.LOCAL", "")
 	if !strings.Contains(prompt, "10.0.0.0/8") {

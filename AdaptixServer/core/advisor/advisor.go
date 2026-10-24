@@ -311,18 +311,54 @@ func (a *Advisor) HandleChat(agentId string, message string) {
 	logs.Info("", "AI Advisor: chat response for %s: %.100s", agentId, response)
 }
 
-func parseRecommendation(response string) (*Recommendation, error) {
-	response = strings.TrimSpace(response)
+func extractJSON(raw string) string {
+	s := strings.TrimSpace(raw)
 
-	if idx := strings.Index(response, "{"); idx >= 0 {
-		if end := strings.LastIndex(response, "}"); end > idx {
-			response = response[idx : end+1]
+	for _, fence := range []string{"```json", "```JSON", "```"} {
+		if idx := strings.Index(s, fence); idx >= 0 {
+			start := idx + len(fence)
+			if end := strings.Index(s[start:], "```"); end >= 0 {
+				s = strings.TrimSpace(s[start : start+end])
+				break
+			}
 		}
 	}
 
+	idx := strings.Index(s, "{")
+	if idx < 0 {
+		return s
+	}
+
+	depth := 0
+	for i := idx; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[idx : i+1]
+			}
+		case '"':
+			i++
+			for i < len(s) && s[i] != '"' {
+				if s[i] == '\\' {
+					i++
+				}
+				i++
+			}
+		}
+	}
+
+	return s[idx:]
+}
+
+func parseRecommendation(response string) (*Recommendation, error) {
+	jsonStr := extractJSON(response)
+
 	var rec Recommendation
-	if err := json.Unmarshal([]byte(response), &rec); err != nil {
-		return nil, fmt.Errorf("invalid JSON from LLM: %w (response: %.200s)", err, response)
+	if err := json.Unmarshal([]byte(jsonStr), &rec); err != nil {
+		return nil, fmt.Errorf("invalid JSON from LLM: %w (response: %.200s)", err, jsonStr)
 	}
 
 	if rec.Command == "" {
