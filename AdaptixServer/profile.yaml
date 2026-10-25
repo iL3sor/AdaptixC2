@@ -33,6 +33,7 @@ Advisor:
   redact_creds: true
   max_output_len: 4000
   bof_path: "/home/kali/AdaptixC2/CS-Situational-Awareness-BOF/SA/"
+  remote_ops_path: "/home/kali/AdaptixC2/CS-Remote-OPs-BOF/"
 
 HttpServer:
   error:

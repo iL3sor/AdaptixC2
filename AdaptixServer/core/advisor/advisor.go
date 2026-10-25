@@ -214,7 +214,7 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 
 	otherAgents := a.buildMultiAgentSummary(agentId)
 
-	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath)
+	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath, a.config.RemoteOpsPath)
 	userPrompt := BuildUserPrompt(agentCtx, history, task.CommandLine, task.ClearText, a.config.MaxOutputLen, reconSummary, otherAgents)
 
 	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)
@@ -279,7 +279,7 @@ func (a *Advisor) HandleChat(agentId string, message string) {
 
 	otherAgents := a.buildMultiAgentSummary(agentId)
 
-	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath)
+	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath, a.config.RemoteOpsPath)
 	userPrompt := BuildChatPrompt(agentCtx, history, reconSummary, otherAgents, message)
 
 	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)

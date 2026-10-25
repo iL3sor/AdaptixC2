@@ -179,7 +179,7 @@ func TestExtractJSON_BalancedBraces(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_WithScope(t *testing.T) {
-	prompt := BuildSystemPrompt("10.0.0.0/8, CORP.LOCAL", "")
+	prompt := BuildSystemPrompt("10.0.0.0/8, CORP.LOCAL", "", "")
 	if !strings.Contains(prompt, "10.0.0.0/8") {
 		t.Error("scope not included in system prompt")
 	}
@@ -189,7 +189,7 @@ func TestBuildSystemPrompt_WithScope(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_NoScope(t *testing.T) {
-	prompt := BuildSystemPrompt("", "")
+	prompt := BuildSystemPrompt("", "", "")
 	if strings.Contains(prompt, "scope:") {
 		t.Error("scope clause should not appear when scope is empty")
 	}
@@ -626,7 +626,7 @@ func TestParseDiscoveries_NoIPsFromNonNetworkCommands(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_OPSECContent(t *testing.T) {
-	prompt := BuildSystemPrompt("", "")
+	prompt := BuildSystemPrompt("", "", "")
 	checks := []string{
 		"OPSEC",
 		"BOF",

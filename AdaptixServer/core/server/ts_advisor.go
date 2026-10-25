@@ -53,7 +53,8 @@ func (ts *Teamserver) InitAdvisor() {
 		MaxHistory:   ts.Profile.Advisor.MaxHistory,
 		RedactCreds:  ts.Profile.Advisor.RedactCreds,
 		MaxOutputLen: ts.Profile.Advisor.MaxOutputLen,
-		BofPath:      ts.Profile.Advisor.BofPath,
+		BofPath:       ts.Profile.Advisor.BofPath,
+		RemoteOpsPath: ts.Profile.Advisor.RemoteOpsPath,
 	}
 
 	ts.Advisor = advisor.NewAdvisor(config, ts)
