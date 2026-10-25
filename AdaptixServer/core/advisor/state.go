@@ -1,13 +1,25 @@
 package advisor
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
+
+type ChatMessage struct {
+	Timestamp time.Time
+	Role      string // "operator" or "advisor"
+	Message   string
+}
 
 type AgentState struct {
-	mu      sync.RWMutex
-	Context AgentContext
-	History []HistoryEntry
-	maxHist int
-	Recon   *ReconState
+	mu                sync.RWMutex
+	Context           AgentContext
+	History           []HistoryEntry
+	maxHist           int
+	Recon             *ReconState
+	EngagementSummary string
+	ChatMessages      []ChatMessage
+	maxChat           int
 }
 
 func NewAgentState(ctx AgentContext, maxHistory int) *AgentState {
@@ -15,10 +27,12 @@ func NewAgentState(ctx AgentContext, maxHistory int) *AgentState {
 		maxHistory = 10
 	}
 	return &AgentState{
-		Context: ctx,
-		History: make([]HistoryEntry, 0, maxHistory),
-		maxHist: maxHistory,
-		Recon:   NewReconState(),
+		Context:      ctx,
+		History:      make([]HistoryEntry, 0, maxHistory),
+		maxHist:      maxHistory,
+		Recon:        NewReconState(),
+		ChatMessages: make([]ChatMessage, 0, 20),
+		maxChat:      20,
 	}
 }
 
@@ -51,4 +65,39 @@ func (s *AgentState) GetContext() AgentContext {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.Context
+}
+
+func (s *AgentState) SetEngagementSummary(summary string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.EngagementSummary = summary
+}
+
+func (s *AgentState) GetEngagementSummary() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.EngagementSummary
+}
+
+func (s *AgentState) AddChatMessage(role, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ChatMessages = append(s.ChatMessages, ChatMessage{
+		Timestamp: time.Now().UTC(),
+		Role:      role,
+		Message:   message,
+	})
+	if len(s.ChatMessages) > s.maxChat {
+		s.ChatMessages = s.ChatMessages[len(s.ChatMessages)-s.maxChat:]
+	}
+}
+
+func (s *AgentState) GetChatMessages() []ChatMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]ChatMessage, len(s.ChatMessages))
+	copy(out, s.ChatMessages)
+	return out
 }

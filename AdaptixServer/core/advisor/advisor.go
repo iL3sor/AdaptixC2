@@ -214,8 +214,11 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 
 	otherAgents := a.buildMultiAgentSummary(agentId)
 
+	engSummary := state.GetEngagementSummary()
+	chatMsgs := state.GetChatMessages()
+
 	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath, a.config.RemoteOpsPath)
-	userPrompt := BuildUserPrompt(agentCtx, history, task.CommandLine, task.ClearText, a.config.MaxOutputLen, reconSummary, otherAgents)
+	userPrompt := BuildUserPrompt(agentCtx, history, task.CommandLine, task.ClearText, a.config.MaxOutputLen, reconSummary, otherAgents, engSummary, chatMsgs)
 
 	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
@@ -243,6 +246,10 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 	}
 	rec.AgentID = agentId
 
+	if rec.EngagementSummary != "" {
+		state.SetEngagementSummary(rec.EngagementSummary)
+	}
+
 	packet := SyncPacketAdvisor{
 		SpType:       TYPE_ADVISOR_RECOMMENDATION,
 		AgentID:      rec.AgentID,
@@ -263,6 +270,8 @@ func (a *Advisor) handleTaskComplete(agentId string, task adaptix.TaskData) {
 func (a *Advisor) HandleChat(agentId string, message string) {
 	state := a.getOrCreateState(agentId)
 
+	state.AddChatMessage("operator", message)
+
 	a.sendStatus(agentId, "processing", "Thinking about your question...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -278,9 +287,11 @@ func (a *Advisor) HandleChat(agentId string, message string) {
 	}
 
 	otherAgents := a.buildMultiAgentSummary(agentId)
+	engSummary := state.GetEngagementSummary()
+	chatMsgs := state.GetChatMessages()
 
 	systemPrompt := BuildSystemPrompt(a.config.Scope, a.config.BofPath, a.config.RemoteOpsPath)
-	userPrompt := BuildChatPrompt(agentCtx, history, reconSummary, otherAgents, message)
+	userPrompt := BuildChatPrompt(agentCtx, history, reconSummary, otherAgents, engSummary, chatMsgs, message)
 
 	response, err := a.llm.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
@@ -300,11 +311,14 @@ func (a *Advisor) HandleChat(agentId string, message string) {
 		return
 	}
 
+	trimmedResponse := strings.TrimSpace(response)
+	state.AddChatMessage("advisor", trimmedResponse)
+
 	a.ts.SyncAdvisor(SyncPacketAdvisorChat{
 		SpType:   TYPE_ADVISOR_CHAT_RESPONSE,
 		AgentID:  agentId,
 		Query:    message,
-		Response: strings.TrimSpace(response),
+		Response: trimmedResponse,
 		Date:     time.Now().UTC().Unix(),
 	})
 

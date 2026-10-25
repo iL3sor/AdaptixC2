@@ -39,14 +39,15 @@ type AgentContext struct {
 }
 
 type Recommendation struct {
-	AgentID      string   `json:"agent_id"`
-	Command      string   `json:"command"`
-	Rationale    string   `json:"rationale"`
-	LookFor      string   `json:"look_for"`
-	Priority     string   `json:"priority"`
-	Category     string   `json:"category"`
-	OpsecNote    string   `json:"opsec_note"`
-	Alternatives []string `json:"alternatives"`
+	AgentID            string   `json:"agent_id"`
+	Command            string   `json:"command"`
+	Rationale          string   `json:"rationale"`
+	LookFor            string   `json:"look_for"`
+	Priority           string   `json:"priority"`
+	Category           string   `json:"category"`
+	OpsecNote          string   `json:"opsec_note"`
+	Alternatives       []string `json:"alternatives"`
+	EngagementSummary  string   `json:"engagement_summary"`
 }
 
 type SyncPacketAdvisor struct {

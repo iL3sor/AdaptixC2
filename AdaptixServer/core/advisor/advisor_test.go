@@ -214,7 +214,7 @@ func TestBuildUserPrompt(t *testing.T) {
 		{Timestamp: time.Now(), CommandLine: "whoami", Output: "CORP\\admin", Success: true},
 	}
 
-	prompt := BuildUserPrompt(ctx, history, "net user", "admin\nGuest\nkrbtgt", 4000, "", "")
+	prompt := BuildUserPrompt(ctx, history, "net user", "admin\nGuest\nkrbtgt", 4000, "", "", "", nil)
 
 	checks := []string{
 		"WORKSTATION1",
@@ -237,7 +237,7 @@ func TestBuildUserPrompt(t *testing.T) {
 func TestBuildUserPrompt_TruncatesLongOutput(t *testing.T) {
 	ctx := AgentContext{Hostname: "HOST"}
 	longOutput := strings.Repeat("A", 5000)
-	prompt := BuildUserPrompt(ctx, nil, "cmd", longOutput, 100, "", "")
+	prompt := BuildUserPrompt(ctx, nil, "cmd", longOutput, 100, "", "", "", nil)
 	if !strings.Contains(prompt, "(truncated)") {
 		t.Error("long output should be truncated")
 	}
@@ -248,7 +248,7 @@ func TestBuildUserPrompt_TruncatesLongOutput(t *testing.T) {
 
 func TestBuildUserPrompt_EmptyOutput(t *testing.T) {
 	ctx := AgentContext{Hostname: "HOST"}
-	prompt := BuildUserPrompt(ctx, nil, "cmd", "", 4000, "", "")
+	prompt := BuildUserPrompt(ctx, nil, "cmd", "", 4000, "", "", "", nil)
 	if !strings.Contains(prompt, "(empty output)") {
 		t.Error("empty output should be indicated")
 	}
@@ -645,7 +645,7 @@ func TestBuildSystemPrompt_OPSECContent(t *testing.T) {
 
 func TestBuildUserPrompt_WithReconSummary(t *testing.T) {
 	ctx := AgentContext{Hostname: "HOST"}
-	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "Completed: identity | Pending: network", "")
+	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "Completed: identity | Pending: network", "", "", nil)
 	if !strings.Contains(prompt, "RECON STATE") {
 		t.Error("prompt should contain RECON STATE section")
 	}
@@ -656,7 +656,7 @@ func TestBuildUserPrompt_WithReconSummary(t *testing.T) {
 
 func TestBuildUserPrompt_WithOtherAgents(t *testing.T) {
 	ctx := AgentContext{Hostname: "HOST"}
-	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "", "  [abc12345] CORP\\admin@DC01 | elevated=YES\n")
+	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "", "  [abc12345] CORP\\admin@DC01 | elevated=YES\n", "", nil)
 	if !strings.Contains(prompt, "OTHER AGENTS") {
 		t.Error("prompt should contain OTHER AGENTS section")
 	}
@@ -667,7 +667,7 @@ func TestBuildUserPrompt_WithOtherAgents(t *testing.T) {
 
 func TestBuildUserPrompt_EmptyReconAndAgents(t *testing.T) {
 	ctx := AgentContext{Hostname: "HOST"}
-	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "", "")
+	prompt := BuildUserPrompt(ctx, nil, "cmd", "out", 4000, "", "", "", nil)
 	if strings.Contains(prompt, "RECON STATE") {
 		t.Error("prompt should not contain RECON STATE when empty")
 	}

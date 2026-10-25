@@ -488,25 +488,21 @@ Respond ONLY in this exact JSON format, no markdown fences:
   "priority": "high|medium|low",
   "category": "recon|privesc|lateral|creds|persist|exfil",
   "opsec_note": "brief detection risk assessment (what telemetry this generates, what could catch it)",
-  "alternatives": ["stealthier or noisier alt 1", "alt 2"]
+  "alternatives": ["stealthier or noisier alt 1", "alt 2"],
+  "engagement_summary": "2-3 sentence summary of the engagement state: current phase, key findings, apparent operator objective, what to do next. This is your persistent memory — it will be shown to you on the next call."
 }
 
 The "command" field MUST contain a valid Adaptix command from the lists above.
 The "alternatives" array should also contain valid Adaptix commands, ordered stealthiest to noisiest.
-If the primary recommendation is already the stealthiest option, alternatives can be empty.`, scopeClause)
+If the primary recommendation is already the stealthiest option, alternatives can be empty.
+The "engagement_summary" MUST be updated every time — it is your ONLY memory between calls.`, scopeClause)
 
 	prompt = strings.ReplaceAll(prompt, "{BOF}", bofPrefix)
 	prompt = strings.ReplaceAll(prompt, "{ROPS}", ropsPrefix)
 	return prompt
 }
 
-func BuildUserPrompt(ctx AgentContext, history []HistoryEntry, currentCmd string, currentOutput string, maxOutputLen int, reconSummary string, otherAgents string) string {
-	if maxOutputLen <= 0 {
-		maxOutputLen = 4000
-	}
-
-	var sb strings.Builder
-
+func buildAgentHeader(sb *strings.Builder, ctx AgentContext) {
 	osName := "Unknown"
 	switch {
 	case ctx.OS == "1" || strings.Contains(strings.ToLower(ctx.OsDesc), "windows"):
@@ -522,38 +518,70 @@ func BuildUserPrompt(ctx AgentContext, history []HistoryEntry, currentCmd string
 		elevStr = "Yes (admin/root)"
 	}
 
-	fmt.Fprintf(&sb, "AGENT CONTEXT:\n")
-	fmt.Fprintf(&sb, "  Host: %s\\%s\n", ctx.Domain, ctx.Hostname)
-	fmt.Fprintf(&sb, "  User: %s | Elevated: %s\n", ctx.Username, elevStr)
-	fmt.Fprintf(&sb, "  OS: %s (%s) | Arch: %s\n", osName, ctx.OsDesc, ctx.Arch)
-	fmt.Fprintf(&sb, "  Process: %s (PID %s)\n", ctx.Process, ctx.PID)
-	fmt.Fprintf(&sb, "  Internal IP: %s | External IP: %s\n", ctx.InternalIP, ctx.ExternalIP)
+	fmt.Fprintf(sb, "AGENT CONTEXT:\n")
+	fmt.Fprintf(sb, "  Host: %s\\%s\n", ctx.Domain, ctx.Hostname)
+	fmt.Fprintf(sb, "  User: %s | Elevated: %s\n", ctx.Username, elevStr)
+	fmt.Fprintf(sb, "  OS: %s (%s) | Arch: %s\n", osName, ctx.OsDesc, ctx.Arch)
+	fmt.Fprintf(sb, "  Process: %s (PID %s)\n", ctx.Process, ctx.PID)
+	fmt.Fprintf(sb, "  Internal IP: %s | External IP: %s\n", ctx.InternalIP, ctx.ExternalIP)
+}
+
+func buildContextSections(sb *strings.Builder, reconSummary, otherAgents, engSummary string, chatMsgs []ChatMessage, history []HistoryEntry) {
+	if engSummary != "" {
+		fmt.Fprintf(sb, "\nENGAGEMENT SUMMARY (your previous assessment — use as memory):\n%s\n", engSummary)
+	}
 
 	if reconSummary != "" {
-		fmt.Fprintf(&sb, "\nRECON STATE:\n%s\n", reconSummary)
+		fmt.Fprintf(sb, "\nRECON STATE:\n%s\n", reconSummary)
 	}
 
 	if otherAgents != "" {
-		fmt.Fprintf(&sb, "\nOTHER AGENTS IN ENGAGEMENT:\n%s\n", otherAgents)
+		fmt.Fprintf(sb, "\nOTHER AGENTS IN ENGAGEMENT:\n%s\n", otherAgents)
+	}
+
+	if len(chatMsgs) > 0 {
+		fmt.Fprintf(sb, "\nOPERATOR CHAT HISTORY (shows what the operator is thinking/wanting):\n")
+		for _, m := range chatMsgs {
+			role := "OPERATOR"
+			if m.Role == "advisor" {
+				role = "AI"
+			}
+			msg := m.Message
+			if len(msg) > 300 {
+				msg = msg[:300] + "..."
+			}
+			fmt.Fprintf(sb, "  [%s] %s: %s\n", m.Timestamp.Format("15:04:05"), role, msg)
+		}
 	}
 
 	if len(history) > 0 {
-		fmt.Fprintf(&sb, "\nRECENT HISTORY:\n")
+		fmt.Fprintf(sb, "\nCONSOLE HISTORY (recent commands and output):\n")
 		for _, h := range history {
 			status := "OK"
 			if !h.Success {
 				status = "FAIL"
 			}
 			outSnippet := h.Output
-			if len(outSnippet) > 200 {
-				outSnippet = outSnippet[:200] + "..."
+			if len(outSnippet) > 1000 {
+				outSnippet = outSnippet[:1000] + "..."
 			}
-			fmt.Fprintf(&sb, "  [%s] %s> %s\n", status, h.Timestamp.Format("15:04:05"), h.CommandLine)
+			fmt.Fprintf(sb, "  [%s] %s> %s\n", status, h.Timestamp.Format("15:04:05"), h.CommandLine)
 			if outSnippet != "" {
-				fmt.Fprintf(&sb, "    → %s\n", outSnippet)
+				fmt.Fprintf(sb, "    → %s\n", outSnippet)
 			}
 		}
 	}
+}
+
+func BuildUserPrompt(ctx AgentContext, history []HistoryEntry, currentCmd string, currentOutput string, maxOutputLen int, reconSummary string, otherAgents string, engSummary string, chatMsgs []ChatMessage) string {
+	if maxOutputLen <= 0 {
+		maxOutputLen = 4000
+	}
+
+	var sb strings.Builder
+
+	buildAgentHeader(&sb, ctx)
+	buildContextSections(&sb, reconSummary, otherAgents, engSummary, chatMsgs, history)
 
 	fmt.Fprintf(&sb, "\nCURRENT TASK:\n")
 	fmt.Fprintf(&sb, "  Command: %s\n", currentCmd)
@@ -568,61 +596,16 @@ func BuildUserPrompt(ctx AgentContext, history []HistoryEntry, currentCmd string
 	}
 	fmt.Fprintf(&sb, "%s\n", output)
 
-	fmt.Fprintf(&sb, "\nBased on the operator's recent commands and their apparent objective, what is the best next step? Continue the operator's current workflow unless it is complete or blocked.")
+	fmt.Fprintf(&sb, "\nBased on the operator's recent commands, chat messages, and their apparent objective, what is the best next step? Continue the operator's current workflow unless it is complete or blocked. Update the engagement_summary with your current understanding.")
 
 	return sb.String()
 }
 
-func BuildChatPrompt(ctx AgentContext, history []HistoryEntry, reconSummary string, otherAgents string, userMessage string) string {
+func BuildChatPrompt(ctx AgentContext, history []HistoryEntry, reconSummary string, otherAgents string, engSummary string, chatMsgs []ChatMessage, userMessage string) string {
 	var sb strings.Builder
 
-	osName := "Unknown"
-	switch {
-	case ctx.OS == "1" || strings.Contains(strings.ToLower(ctx.OsDesc), "windows"):
-		osName = "Windows"
-	case ctx.OS == "2" || strings.Contains(strings.ToLower(ctx.OsDesc), "linux"):
-		osName = "Linux"
-	case ctx.OS == "3" || strings.Contains(strings.ToLower(ctx.OsDesc), "mac"):
-		osName = "macOS"
-	}
-
-	elevStr := "No"
-	if ctx.Elevated {
-		elevStr = "Yes (admin/root)"
-	}
-
-	fmt.Fprintf(&sb, "AGENT CONTEXT:\n")
-	fmt.Fprintf(&sb, "  Host: %s\\%s\n", ctx.Domain, ctx.Hostname)
-	fmt.Fprintf(&sb, "  User: %s | Elevated: %s\n", ctx.Username, elevStr)
-	fmt.Fprintf(&sb, "  OS: %s (%s) | Arch: %s\n", osName, ctx.OsDesc, ctx.Arch)
-	fmt.Fprintf(&sb, "  Process: %s (PID %s)\n", ctx.Process, ctx.PID)
-	fmt.Fprintf(&sb, "  Internal IP: %s | External IP: %s\n", ctx.InternalIP, ctx.ExternalIP)
-
-	if reconSummary != "" {
-		fmt.Fprintf(&sb, "\nRECON STATE:\n%s\n", reconSummary)
-	}
-
-	if otherAgents != "" {
-		fmt.Fprintf(&sb, "\nOTHER AGENTS IN ENGAGEMENT:\n%s\n", otherAgents)
-	}
-
-	if len(history) > 0 {
-		fmt.Fprintf(&sb, "\nRECENT HISTORY:\n")
-		for _, h := range history {
-			status := "OK"
-			if !h.Success {
-				status = "FAIL"
-			}
-			outSnippet := h.Output
-			if len(outSnippet) > 200 {
-				outSnippet = outSnippet[:200] + "..."
-			}
-			fmt.Fprintf(&sb, "  [%s] %s> %s\n", status, h.Timestamp.Format("15:04:05"), h.CommandLine)
-			if outSnippet != "" {
-				fmt.Fprintf(&sb, "    → %s\n", outSnippet)
-			}
-		}
-	}
+	buildAgentHeader(&sb, ctx)
+	buildContextSections(&sb, reconSummary, otherAgents, engSummary, chatMsgs, history)
 
 	fmt.Fprintf(&sb, "\nOPERATOR QUESTION:\n%s\n", userMessage)
 	fmt.Fprintf(&sb, "\nAnswer the operator's question in the context of this engagement and the Adaptix C2 framework. Be concise, tactical, and OPSEC-aware. Only suggest commands that exist in Adaptix (built-in commands or available BOFs listed in the system prompt). If they ask about a technique, explain the stealthiest approach using Adaptix commands. You may respond in free-form text (not JSON) for chat messages.")
