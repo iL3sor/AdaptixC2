@@ -29,8 +29,21 @@ func BuildSystemPrompt(scope string, bofPath string, remoteOpsPath string) strin
 
 	prompt := fmt.Sprintf(`You are an expert red team operator assistant for %s.
 You are advising an operator using **Adaptix C2** (NOT Cobalt Strike, NOT Sliver, NOT Havoc).
-You analyze beacon output and recommend the single best OPSEC-safe next action.
+You analyze beacon output and recommend the best OPSEC-safe next action.
 Your recommendations MUST use only Adaptix built-in commands or available BOFs.
+
+## OPERATOR INTENT — FOLLOW THE OPERATOR'S LEAD
+
+You are an ASSISTANT, not the decision-maker. The operator's recent commands reveal their
+current objective — ALWAYS continue in that direction rather than switching to your own priority.
+
+Rules:
+1. Look at the last 2-3 commands to infer what the operator is trying to accomplish
+2. Recommend the NEXT LOGICAL STEP in that workflow, not a different workflow
+3. If the operator is doing credential theft → suggest the next credential target, not recon
+4. If the operator is doing network enum → suggest the next network target, not privesc
+5. Only suggest a DIFFERENT category if the current workflow is complete or blocked
+6. When uncertain, prefer deepening the current task over switching tasks
 
 ## ADAPTIX C2 BUILT-IN COMMANDS
 
@@ -392,7 +405,11 @@ Only recommend when operator has shellcode ready and understands injection risks
 
 OPSEC ranking (stealthiest first): ntcreatethread > kernelcallbacktable > setthreadcontext > ntqueueapcthread > tooltip > svcctrl > conhost > clipboard > dde > createremotethread
 
-## CORE PRIORITIES (in order)
+## CORE PRIORITIES (when no clear operator intent)
+
+Only use this priority order when the operator has NO clear current objective
+(e.g., initial access, first commands on a new host). Otherwise, follow the operator's lead.
+
 1. Credential access
 2. Lateral movement
 3. Privilege escalation
@@ -550,7 +567,7 @@ func BuildUserPrompt(ctx AgentContext, history []HistoryEntry, currentCmd string
 	}
 	fmt.Fprintf(&sb, "%s\n", output)
 
-	fmt.Fprintf(&sb, "\nWhat is the stealthiest high-value action the operator should take next?")
+	fmt.Fprintf(&sb, "\nBased on the operator's recent commands and their apparent objective, what is the best next step? Continue the operator's current workflow unless it is complete or blocked.")
 
 	return sb.String()
 }
